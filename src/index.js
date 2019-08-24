@@ -1,7 +1,5 @@
 const express = require('express');
-const connectionString = require('../certs/mysql.json') ?
-    require('../certs/mysql.json').connectionString :
-    process.env.MYSQL_CONNECTION_STRING;
+const connectionString = process.env.MYSQL_CONNECTION_STRING;
 const mysql = require('mysql').createConnection(connectionString);
 const bodyParser = require('body-parser');
 const bcrypt = require('bcrypt');
