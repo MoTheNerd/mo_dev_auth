@@ -1,0 +1,12 @@
+{
+  "name": "mo_dev_auth",
+  "version": "1.0.0",
+  "description": "auth microservice for mohammad.dev",
+  "main": "index.js",
+  "repository": "https://github.com/MoTheNerd/mo_dev_auth",
+  "author": "Mohammad Al-Ahdal <mo@mohammad.dev>",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.17.1"
+  }
+}
