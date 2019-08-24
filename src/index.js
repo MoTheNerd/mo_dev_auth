@@ -1,11 +1,13 @@
 const express = require('express');
-const connectionString = require('../certs/mysql.json').connectionString;
+const connectionString = require('../certs/mysql.json') ?
+    require('../certs/mysql.json').connectionString :
+    process.env.MYSQL_CONNECTION_STRING;
 const mysql = require('mysql').createConnection(connectionString);
 const bodyParser = require('body-parser');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const app = express();
-const port = 6001;
+const port = process.env.PORT ? process.env.PORT : 6001;
 const moment = require('moment');
 
 app.use(bodyParser.json())
@@ -26,8 +28,8 @@ app.post("/authenticateUsingToken", async (req, res) => {
     await mysql.query(`SELECT * FROM modev_admin_tokens WHERE TOKEN = '${req.body.token}';`, (err, result) => {
         if (err || result.length === 0) {
             res.send("token not valid, please login first")
-        }else{
-            if (moment(result[0]["EXPIRES"]).isAfter(moment())){
+        } else {
+            if (moment(result[0]["EXPIRES"]).isAfter(moment())) {
                 res.send({
                     code: 200,
                     data: {
@@ -35,7 +37,7 @@ app.post("/authenticateUsingToken", async (req, res) => {
                         EXPIRES: moment(result[0]["EXPIRES"]).format('YYYY/MM/DD HH:mm:ss')
                     }
                 })
-            }else{
+            } else {
                 let newAuthToken = crypto.randomBytes(64)
                 addAuthToken(newAuthToken)
                 res.send({
