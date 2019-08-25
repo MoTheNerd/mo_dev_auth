@@ -31,24 +31,31 @@ const addAuthToken = async (token: String) => {
 
 app.post("/authenticateUsingToken", async (req, res) => {
     let result = (await db.collection('auth_tokens').find({ token: req.body.token }).toArray())[0]
-    if (moment.utc(result.expiry).isAfter(moment.utc())) {
-        res.send({
-            code: 200,
-            data: {
-                token: result.token,
-                expiry: moment.utc(result.expiry).format('YYYY/MM/DD HH:mm:ss')
-            }
-        })
+    if (result) {
+        if (moment.utc(result.expiry).isAfter(moment.utc())) {
+            res.send({
+                code: 200,
+                data: {
+                    token: result.token,
+                    expiry: moment.utc(result.expiry).format('YYYY/MM/DD HH:mm:ss')
+                }
+            })
+        } else {
+            await db.collection('auth_tokens').deleteOne({ token: req.body.token })
+            let newAuthToken = crypto.randomBytes(64).toString('hex')
+            addAuthToken(newAuthToken)
+            res.send({
+                code: 200,
+                data: {
+                    token: newAuthToken,
+                    expiry: moment.utc().add(1, "M").format('YYYY/MM/DD HH:mm:ss'),
+                }
+            })
+        }
     } else {
-        await db.collection('auth_tokens').deleteOne({ token: req.body.token })
-        let newAuthToken = crypto.randomBytes(64).toString('hex')
-        addAuthToken(newAuthToken)
         res.send({
-            code: 200,
-            data: {
-                token: newAuthToken,
-                expiry: moment.utc().add(1, "M").format('YYYY/MM/DD HH:mm:ss'),
-            }
+            code: 301,
+            message: "Token not valid, please login."
         })
     }
 })
@@ -56,18 +63,22 @@ app.post("/authenticateUsingToken", async (req, res) => {
 app.post("/authenticate", async (req, res) => {
     console.log("authenticating...");
     let hashed_password = (await db.collection('general').find({}).toArray())[0].hashed_password
-    let result = await bcrypt.compare(req.body.password, hashed_password)
-    if (result) {
-        console.log("authenticated!");
-        let newAuthToken = crypto.randomBytes(64).toString('hex');
-        addAuthToken(newAuthToken);
-        res.send({
-            token: newAuthToken
-        })
-    } else {
-        console.log("authentication failed.");
-        res.send({ code: 301, message: "I couldn't authorize you. You're not me." });
-    };
+    if (req.body.password !== undefined){
+        let result = await bcrypt.compare(req.body.password, hashed_password)
+        if (result) {
+            console.log("authenticated!");
+            let newAuthToken = crypto.randomBytes(64).toString('hex');
+            addAuthToken(newAuthToken);
+            res.send({
+                token: newAuthToken
+            })
+        } else {
+            console.log("authentication failed.");
+            res.send({ code: 301, message: "I couldn't authorize you. You're not me." });
+        };
+    }else{
+        res.send({code: 301, message: "no password sent, password must be sent in body"})
+    }
 });
 
 
