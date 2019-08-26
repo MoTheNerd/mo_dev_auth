@@ -29,6 +29,11 @@ const addAuthToken = async (token: String) => {
     await db.collection('auth_tokens').insertOne({ token, expiry: moment.utc().add(1, "M").toDate() })
 }
 
+
+app.get("/", (req: express.Request, res: express.Response) => {
+    res.send("Auth MicroService API is running")
+})
+
 app.post("/authenticateUsingToken", async (req, res) => {
     let result = (await db.collection('auth_tokens').find({ token: req.body.token }).toArray())[0]
     if (result) {
