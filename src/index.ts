@@ -16,7 +16,7 @@ let db: Db;
 app.use(bodyParser.json())
 
 
-require('mongodb').connect(mongocs, (err: MongoError, result: MongoClient) => {
+require('mongodb').connect(mongocs, { useNewUrlParser: true, useUnifiedTopology: true }, (err: MongoError, result: MongoClient) => {
     if (err) {
         console.log(err)
         process.exit(1);
@@ -68,7 +68,7 @@ app.post("/authenticateUsingToken", async (req, res) => {
 app.post("/authenticate", async (req, res) => {
     console.log("authenticating...");
     let hashed_password = (await db.collection('general').find({}).toArray())[0].hashed_password
-    if (req.body.password !== undefined){
+    if (req.body.password !== undefined) {
         let result = await bcrypt.compare(req.body.password, hashed_password)
         if (result) {
             console.log("authenticated!");
@@ -81,8 +81,8 @@ app.post("/authenticate", async (req, res) => {
             console.log("authentication failed.");
             res.send({ code: 301, message: "I couldn't authorize you. You're not me." });
         };
-    }else{
-        res.send({code: 301, message: "no password sent, password must be sent in body"})
+    } else {
+        res.send({ code: 301, message: "no password sent, password must be sent in body" })
     }
 });
 
