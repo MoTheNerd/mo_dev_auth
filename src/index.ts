@@ -1,6 +1,6 @@
 require('dotenv').config()
 
-import { MongoError, MongoClient, Db, } from 'mongodb';
+import { MongoError, MongoClient, Db } from 'mongodb';
 
 import express from 'express';
 import bodyParser from 'body-parser';
@@ -15,13 +15,15 @@ let db: Db;
 
 app.use(bodyParser.json())
 
+const get = (path: string, ...rest : any[]) => app.get(`/auth${path}`, rest)
+const post = (path: string, ...rest : any[]) => app.post(`/auth${path}`, rest)
 
 require('mongodb').connect(mongocs, { useNewUrlParser: true, useUnifiedTopology: true }, (err: MongoError, result: MongoClient) => {
     if (err) {
         console.log(err)
         process.exit(1);
     } else {
-        db = result.db('default')
+        db = result.db('mw-default')
     }
 })
 
@@ -29,12 +31,11 @@ const addAuthToken = async (token: String) => {
     await db.collection('auth_tokens').insertOne({ token, expiry: moment.utc().add(1, "M").toDate() })
 }
 
-
-app.get("/", (req: express.Request, res: express.Response) => {
+get("/", (req: express.Request, res: express.Response) => {
     res.send("Auth MicroService API is running")
 })
 
-app.post("/authenticateUsingToken", async (req, res) => {
+post("/authenticateUsingToken", async (req: express.Request, res: express.Response) => {
     let result = (await db.collection('auth_tokens').find({ token: req.body.token }).toArray())[0]
     if (result) {
         if (moment.utc(result.expiry).isAfter(moment.utc())) {
@@ -65,7 +66,7 @@ app.post("/authenticateUsingToken", async (req, res) => {
     }
 })
 
-app.post("/authenticate", async (req, res) => {
+post("/authenticate", async (req: express.Request, res: express.Response) => {
     console.log("authenticating...");
     let hashed_password = (await db.collection('general').find({}).toArray())[0].hashed_password
     if (req.body.password !== undefined) {
