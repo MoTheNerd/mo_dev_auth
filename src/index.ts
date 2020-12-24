@@ -1,91 +1,79 @@
-require('dotenv').config()
+require('dotenv').config();
 
-import { MongoError, MongoClient, Db } from 'mongodb';
+import {Connection, createConnection} from 'mysql2';
 
 import express from 'express';
 import bodyParser from 'body-parser';
-import bcrypt from 'bcrypt';
 import crypto from 'crypto';
-import moment from 'moment';
+import Server from 'socket.io';
+import { exit } from 'process';
+import { IAuthToken } from './models/IAuthToken';
 
-const mongocs = process.env.MONGO_CONNECTION_STRING;
+const mysqlcs = process.env.MYSQL_CONNECTION_STRING;
+const schema: "prod" | "dev" = process.env.MYSQL_SCHEMA === "prod" ? "prod" : "dev";
+const authTokenValidInterval = process.env.MYSQL_AUTH_TOKEN_VALID_INTERVAL ? process.env.MYSQL_AUTH_TOKEN_VALID_INTERVAL : "3 MONTH"
+
+const io = new Server();
+
+let dbConn: Connection;
+
+try {
+    dbConn = createConnection(mysqlcs!);
+} catch (error) {
+    console.error("There was no connection string specified for the sql server");
+    exit(-1);
+}
+
 const app = express();
 const port = process.env.PORT ? process.env.PORT : 6001;
-let db: Db;
 
 app.use(bodyParser.json())
+app.use((req, res, next)=>{
+    res.setHeader('Access-Control-Allow-Origin', '*');
 
-const get = (path: string, ...rest : any[]) => app.get(`/auth${path}`, rest)
-const post = (path: string, ...rest : any[]) => app.post(`/auth${path}`, rest)
-
-require('mongodb').connect(mongocs, { useNewUrlParser: true, useUnifiedTopology: true }, (err: MongoError, result: MongoClient) => {
-    if (err) {
-        console.log(err)
-        process.exit(1);
-    } else {
-        db = result.db('mw-default')
-    }
+    next();
 })
 
 const addAuthToken = async (token: String) => {
-    await db.collection('auth_tokens').insertOne({ token, expiry: moment.utc().add(1, "M").toDate() })
+    let query = `INSERT INTO ${schema}.authTokens (authToken, timeStamp) VALUES('${token}', NOW())`
+    dbConn.query(query)
 }
 
-get("/", (req: express.Request, res: express.Response) => {
+app.get("/", (req, res) => {
     res.send("Auth MicroService API is running")
 })
 
-post("/authenticateUsingToken", async (req: express.Request, res: express.Response) => {
-    let result = (await db.collection('auth_tokens').find({ token: req.body.token }).toArray())[0]
-    if (result) {
-        if (moment.utc(result.expiry).isAfter(moment.utc())) {
-            res.send({
-                code: 200,
-                data: {
-                    token: result.token,
-                    expiry: moment.utc(result.expiry).format('YYYY/MM/DD HH:mm:ss')
-                }
-            })
-        } else {
-            await db.collection('auth_tokens').deleteOne({ token: req.body.token })
-            let newAuthToken = crypto.randomBytes(64).toString('hex')
-            addAuthToken(newAuthToken)
-            res.send({
-                code: 200,
-                data: {
-                    token: newAuthToken,
-                    expiry: moment.utc().add(1, "M").format('YYYY/MM/DD HH:mm:ss'),
-                }
-            })
-        }
-    } else {
-        res.send({
-            code: 301,
-            message: "Token not valid, please login."
-        })
-    }
+app.post("/authenticateClient", async (req, res) => {
+    // check validity of app requesting to authenticate client
+    // for now assume that client is who they say they are until you build the full-fledged authenticator app
+
+    let clientID = req.param("code")
+
+    let newAuthToken = crypto.randomBytes(64).toString('hex')
+    await addAuthToken(newAuthToken)
+
+    io.to(clientID).emit("authenticateSession", newAuthToken)
+    res.send(`authenticated client with code ${clientID}`)
 })
 
-post("/authenticate", async (req: express.Request, res: express.Response) => {
-    console.log("authenticating...");
-    let hashed_password = (await db.collection('general').find({}).toArray())[0].hashed_password
-    if (req.body.password !== undefined) {
-        let result = await bcrypt.compare(req.body.password, hashed_password)
-        if (result) {
-            console.log("authenticated!");
-            let newAuthToken = crypto.randomBytes(64).toString('hex');
-            addAuthToken(newAuthToken);
-            res.send({
-                token: newAuthToken
-            })
+app.get("/check", (req, res) => {
+    let query = `
+        SELECT *, (timeStamp > DATE_SUB(NOW(), INTERVAL ${authTokenValidInterval})) as isActive 
+        FROM ${schema}.authTokens 
+        WHERE authToken = '${req.param("token")}'`
+    dbConn.query(query, (error, result: IAuthToken []) => {
+        if (error) {
+            res.send(`error: ${error.message}`)
         } else {
-            console.log("authentication failed.");
-            res.send({ code: 301, message: "I couldn't authorize you. You're not me." });
-        };
-    } else {
-        res.send({ code: 301, message: "no password sent, password must be sent in body" })
-    }
-});
-
+            if (result.length === 1 && result[0].isActive) {
+                res.send(result[0])
+            } else  {
+                res.send(`error: auth token has expired`)
+            }
+        }
+    })
+})
 
 app.listen(port, () => console.log(`Authentication microservice listening on port: ${port}!`));
+io.attach(6004);
+console.log("Authentication socket is open on port: 6004!");
